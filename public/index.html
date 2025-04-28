@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TestifyAI - Generate Test Cases with AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    .fade-in {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    }
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body class="bg-white text-gray-900 font-sans">
+
+  <!-- Spinner -->
+  <div id="spinner" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex justify-center items-center z-50 hidden">
+    <div class="border-t-4 border-blue-600 border-solid rounded-full w-16 h-16 animate-spin"></div>
+  </div>
+
+  <!-- Toast -->
+  <div id="generateToast" class="fixed bottom-6 right-6 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg hidden z-50">
+    Test cases generated successfully ✅
+  </div>
+
+  <!-- Header -->
+  <header class="flex justify-between items-center p-6 max-w-6xl mx-auto">
+    <div class="text-2xl font-bold text-blue-600">TestifyAI</div>
+    <nav class="space-x-6 hidden md:flex">
+      <a href="#" class="text-gray-700 hover:text-blue-600">About</a>
+      <a href="#" class="text-gray-700 hover:text-blue-600">Contact</a>
+      <a href="#" class="text-gray-700 hover:text-blue-600">Privacy Policy</a>
+    </nav>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="flex flex-col md:flex-row items-center justify-between max-w-6xl mx-auto p-6 mt-10 fade-in">
+    <div class="max-w-xl">
+      <h1 class="text-4xl md:text-5xl font-bold mb-6">Generate Professional Test Cases with AI</h1>
+      <p class="text-lg mb-8 text-gray-600">
+        Instantly turn user stories and requirements into functional, negative, and boundary test cases.
+      </p>
+
+      <div class="flex flex-col sm:flex-row gap-4">
+        <input type="email" placeholder="Enter your email" class="p-3 rounded-lg border border-gray-300 w-full sm:w-auto flex-grow focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <button class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition">
+          Join Waitlist
+        </button>
+      </div>
+    </div>
+    <div class="mt-10 md:mt-0">
+      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-80">
+        <h3 class="text-lg font-semibold mb-4 text-center text-gray-700">Test Cases</h3>
+        <table class="min-w-full text-sm text-gray-700">
+          <thead>
+            <tr>
+              <th class="border-b px-3 py-2 text-left">TC ID</th>
+              <th class="border-b px-3 py-2 text-left">Title</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="border-b px-3 py-2">TC-01</td>
+              <td class="border-b px-3 py-2">Paste User Story</td>
+            </tr>
+            <tr>
+              <td class="border-b px-3 py-2">TC-02</td>
+              <td class="border-b px-3 py-2">Select Type</td>
+            </tr>
+            <tr>
+              <td class="border-b px-3 py-2">TC-03</td>
+              <td class="border-b px-3 py-2">Generate Cases</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="max-w-6xl mx-auto p-6 mt-20 fade-in">
+    <h2 class="text-3xl font-bold text-center mb-12">How It Works</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+      <div class="p-6 bg-gray-50 rounded-lg shadow hover:shadow-lg transition">
+        <div class="text-4xl mb-4 text-blue-600">📋</div>
+        <h3 class="text-xl font-semibold mb-2">Paste User Story</h3>
+        <p class="text-gray-600">Provide your user story or requirement to start.</p>
+      </div>
+      <div class="p-6 bg-gray-50 rounded-lg shadow hover:shadow-lg transition">
+        <div class="text-4xl mb-4 text-blue-600">🎯</div>
+        <h3 class="text-xl font-semibold mb-2">Select Test Case Type</h3>
+        <p class="text-gray-600">Choose Functional, Negative, or Boundary testing.</p>
+      </div>
+      <div class="p-6 bg-gray-50 rounded-lg shadow hover:shadow-lg transition">
+        <div class="text-4xl mb-4 text-blue-600">⚡</div>
+        <h3 class="text-xl font-semibold mb-2">Generate Test Cases</h3>
+        <p class="text-gray-600">Instantly generate detailed test cases.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Test Case Generation -->
+  <section class="max-w-6xl mx-auto p-6 mt-20 fade-in">
+    <h2 class="text-3xl font-bold text-center mb-12">Generate Your Test Cases</h2>
+    <div class="flex flex-col gap-4 md:flex-row justify-center items-center">
+      <textarea id="userStoryInput" class="p-4 w-full sm:w-2/3 border border-gray-300 rounded-lg" rows="4" placeholder="Paste your user story here..."></textarea>
+      <select id="testCaseType" class="p-3 border border-gray-300 rounded-lg">
+        <option value="functional">Functional</option>
+        <option value="negative">Negative</option>
+        <option value="boundary">Boundary</option>
+      </select>
+      <button id="generateBtn" class="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg transition hover:bg-blue-700">
+        Generate Test Cases
+      </button>
+    </div>
+
+    <div id="outputSection" class="mt-12 hidden">
+      <div class="flex justify-end mb-4">
+        <button id="downloadCsvBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition">
+          Download CSV
+        </button>
+        <button id="downloadExcelBtn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold px-4 py-2 rounded-lg transition ml-4">
+          Download Excel
+        </button>
+      </div>
+      <table class="min-w-full table-auto border-collapse" id="testCasesTable">
+        <thead>
+          <tr>
+            <th class="px-4 py-2 border-b text-left">Test Case ID</th>
+            <th class="px-4 py-2 border-b text-left">Title</th>
+            <th class="px-4 py-2 border-b text-left">Steps</th>
+            <th class="px-4 py-2 border-b text-left">Expected Result</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Why Choose TestifyAI Section -->
+  <section class="max-w-6xl mx-auto p-6 mt-20 fade-in">
+    <h2 class="text-3xl font-bold text-center mb-12">
+      Why Choose TestifyAI?
+    </h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div class="p-6 bg-gray-50 rounded-lg shadow hover:shadow-lg transition">
+        <div class="text-4xl mb-4 text-blue-600">🚀</div>
+        <h3 class="text-xl font-semibold mb-2">Save Time</h3>
+        <p class="text-gray-600">Generate detailed test cases instantly and focus on real testing instead of documentation.</p>
+      </div>
+      <div class="p-6 bg-gray-50 rounded-lg shadow hover:shadow-lg transition">
+        <div class="text-4xl mb-4 text-blue-600">🎯</div>
+        <h3 class="text-xl font-semibold mb-2">Improve Quality</h3>
+        <p class="text-gray-600">Cover edge cases and negative scenarios you might otherwise miss.</p>
+      </div>
+      <div class="p-6 bg-gray-50 rounded-lg shadow hover:shadow-lg transition">
+        <div class="text-4xl mb-4 text-blue-600">📦</div>
+        <h3 class="text-xl font-semibold mb-2">Export Easily</h3>
+        <p class="text-gray-600">Export test cases into Excel, Jira, TestRail formats, and more with one click.</p>
+      </div>
+      <div class="p-6 bg-gray-50 rounded-lg shadow hover:shadow-lg transition">
+        <div class="text-4xl mb-4 text-blue-600">🔒</div>
+        <h3 class="text-xl font-semibold mb-2">Secure & Private</h3>
+        <p class="text-gray-600">Your input data stays private and encrypted — security is our priority.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final Call to Action Section -->
+  <section class="bg-blue-600 text-white py-16 mt-20 fade-in">
+    <div class="max-w-4xl mx-auto text-center px-6">
+      <h2 class="text-3xl md:text-4xl font-bold mb-6">
+        Ready to Supercharge Your QA Process?
+      </h2>
+      <p class="text-lg mb-8">Join the waitlist today and be among the first to experience TestifyAI.</p>
+      <div class="flex flex-col sm:flex-row justify-center gap-4">
+        <input type="email" placeholder="Enter your email" class="p-3 rounded-lg border border-gray-300 w-full sm:w-auto flex-grow focus:outline-none focus:ring-2 focus:ring-white text-black">
+        <button class="bg-white hover:bg-gray-200 text-blue-600 font-semibold px-6 py-3 rounded-lg transition">
+          Join Waitlist
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="bg-gray-100 text-gray-600 py-6 mt-20">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center px-6 text-center md:text-left">
+      <p class="mb-4 md:mb-0">&copy; 2025 TestifyAI. All rights reserved.</p>
+      <div class="space-x-6">
+        <a href="#" class="hover:text-blue-600">About</a>
+        <a href="#" class="hover:text-blue-600">Contact</a>
+        <a href="#" class="hover:text-blue-600">Privacy Policy</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const spinner = document.getElementById('spinner');
+      const generateToast = document.getElementById('generateToast');
+    
+      document.getElementById('generateBtn').addEventListener('click', async function() {
+        spinner.classList.remove('hidden');
+    
+        const userStory = document.getElementById('userStoryInput').value;
+        const caseType = document.getElementById('testCaseType').value;
+    
+        try {
+          const response = await fetch('/generate-test-cases', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userStory, caseType })
+          });
+    
+          if (!response.ok) throw new Error('Failed');
+    
+          const data = await response.json();
+          const testCases = data.testCases; // Now we have structured data from the backend
+    
+          const tbody = document.querySelector('#testCasesTable tbody');
+          tbody.innerHTML = ''; // Clear previous data
+          testCases.forEach((test) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td class="px-4 py-2 border-b break-words">${test.testCaseId}</td>
+              <td class="px-4 py-2 border-b break-words">${test.title}</td>
+              <td class="px-4 py-2 border-b break-words">${test.steps}</td>
+              <td class="px-4 py-2 border-b break-words">${test.expectedResult}</td>
+            `;
+            tbody.appendChild(row);
+          });
+    
+          document.getElementById('outputSection').classList.remove('hidden');
+          spinner.classList.add('hidden');
+          generateToast.classList.remove('hidden');
+          setTimeout(() => generateToast.classList.add('hidden'), 3000);
+    
+        } catch (error) {
+          alert('Error generating test cases.');
+          spinner.classList.add('hidden');
+        }
+      });
+    });
+    </script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const fadeElements = document.querySelectorAll('.fade-in');
+  fadeElements.forEach((el) => {
+    el.classList.add('visible');
+  });
+});
+</script>
+
+</body>
+</html>
