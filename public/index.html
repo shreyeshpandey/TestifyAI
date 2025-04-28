@@ -257,6 +257,43 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 </script>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+  const downloadExcelBtn = document.getElementById('downloadExcelBtn');
+
+  downloadCsvBtn.addEventListener('click', function () {
+    const rows = [];
+    const tableRows = document.querySelectorAll('#testCasesTable tbody tr');
+
+    rows.push(['Test Case ID', 'Title', 'Steps', 'Expected Result']); // Header row
+
+    tableRows.forEach((row) => {
+      const columns = row.querySelectorAll('td');
+      const rowData = Array.from(columns).map(col => col.innerText);
+      rows.push(rowData);
+    });
+
+    let csvContent = "data:text/csv;charset=utf-8," 
+      + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'test_cases.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  downloadExcelBtn.addEventListener('click', function () {
+    const table = document.getElementById('testCasesTable');
+    const workbook = XLSX.utils.table_to_book(table, { sheet: "TestCases" });
+    XLSX.writeFile(workbook, "test_cases.xlsx");
+  });
+});
+</script>
 </body>
 </html>
