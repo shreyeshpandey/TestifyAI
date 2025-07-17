@@ -16,6 +16,38 @@
       opacity: 1;
       transform: translateY(0);
     }
+    [contenteditable]:focus {
+      background-color: #f0f9ff;
+    }
+    #generateToast {
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    #generateToast.visible {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    tr.newly-added {
+      background-color: #e6fffa;
+      animation: fadeOut 2s forwards;
+    }
+    @keyframes fadeOut {
+      to { background-color: transparent; }
+    }
+    @keyframes glowPulse {
+      0%, 100% {
+        box-shadow: 0 0 0px #2563eb;
+        background-color: #2563eb;
+      }
+      50% {
+        box-shadow: 0 0 12px 4px #60a5fa;
+        background-color: #3b82f6;
+      }
+    }
+    .blink {
+      animation: glowPulse 1.5s infinite;
+    }
   </style>
 </head>
 <body class="bg-white text-gray-900 font-sans">
@@ -37,6 +69,9 @@
       <a href="#" class="text-gray-700 hover:text-blue-600">About</a>
       <a href="#" class="text-gray-700 hover:text-blue-600">Contact</a>
       <a href="#" class="text-gray-700 hover:text-blue-600">Privacy Policy</a>
+      <button onclick="toggleAdoDrawer()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition blink">
+          🔗 Integrate ADO
+      </button>
     </nav>
   </header>
 
@@ -110,8 +145,8 @@
   <section class="max-w-6xl mx-auto p-6 mt-20 fade-in">
     <h2 class="text-3xl font-bold text-center mb-12">Generate Your Test Cases</h2>
     <div class="flex flex-col gap-4 md:flex-row justify-center items-center">
-      <textarea id="userStoryInput" class="p-4 w-full sm:w-2/3 border border-gray-300 rounded-lg" rows="4" placeholder="Paste your user story here..."></textarea>
-      <select id="testCaseType" class="p-3 border border-gray-300 rounded-lg">
+      <textarea id="userStoryInput" class="p-4 w-full sm:w-2/3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400" rows="4" placeholder="Paste your user story here..."></textarea>
+      <select id="testCaseType" class="p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
         <option value="functional">Functional</option>
         <option value="negative">Negative</option>
         <option value="boundary">Boundary</option>
@@ -130,19 +165,22 @@
           Download Excel
         </button>
       </div>
-      <table class="min-w-full table-auto border-collapse" id="testCasesTable">
-        <thead>
-          <tr>
-            <th class="px-4 py-2 border-b text-left">Test Case ID</th>
-            <th class="px-4 py-2 border-b text-left">Title</th>
-            <th class="px-4 py-2 border-b text-left">Steps</th>
-            <th class="px-4 py-2 border-b text-left">Expected Result</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="overflow-x-auto shadow-sm rounded-lg border">
+        <table class="min-w-full table-auto border-collapse font-mono" id="testCasesTable">
+          <thead class="sticky top-0 bg-white z-10 shadow">
+            <tr>
+              <th class="px-4 py-2 border-b text-left">Test Case ID</th>
+              <th class="px-4 py-2 border-b text-left">Title</th>
+              <th class="px-4 py-2 border-b text-left">Steps</th>
+              <th class="px-4 py-2 border-b text-left">Expected Result</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </section>
+
 
   <!-- Why Choose TestifyAI Section -->
   <section class="max-w-6xl mx-auto p-6 mt-20 fade-in">
@@ -207,44 +245,76 @@
       const generateToast = document.getElementById('generateToast');
     
       document.getElementById('generateBtn').addEventListener('click', async function() {
+        const generateBtn = document.getElementById('generateBtn');
+        const originalText = generateBtn.innerText;
+        generateBtn.disabled = true;
+        generateBtn.innerText = 'Generating...';
         spinner.classList.remove('hidden');
-    
+
         const userStory = document.getElementById('userStoryInput').value;
         const caseType = document.getElementById('testCaseType').value;
-    
+
         try {
           const response = await fetch('/generate-test-cases', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userStory, caseType })
           });
-    
+
           if (!response.ok) throw new Error('Failed');
-    
+
           const data = await response.json();
           const testCases = data.testCases; // Now we have structured data from the backend
-    
+
           const tbody = document.querySelector('#testCasesTable tbody');
           tbody.innerHTML = ''; // Clear previous data
+          if (!Array.isArray(testCases)) {
+            alert('Invalid response format: expected an array of test cases.');
+            spinner.classList.add('hidden');
+            generateBtn.disabled = false;
+            generateBtn.innerText = originalText;
+            return;
+          }
           testCases.forEach((test) => {
+            // Split steps into ordered list items
+            const stepLines = (test.steps || '').split(/\d+\.\s/).filter(Boolean);
+            const stepsAsList = `<ol class="list-decimal list-inside space-y-1 text-sm text-gray-800">${stepLines.map(s => `<li>${s.trim()}</li>`).join('')}</ol>`;
             const row = document.createElement('tr');
+            row.className = 'hover:bg-blue-50 transition newly-added';
             row.innerHTML = `
-              <td class="px-4 py-2 border-b break-words">${test.testCaseId}</td>
-              <td class="px-4 py-2 border-b break-words">${test.title}</td>
-              <td class="px-4 py-2 border-b break-words">${test.steps}</td>
-              <td class="px-4 py-2 border-b break-words">${test.expectedResult}</td>
+              <td contenteditable="true" class="px-4 py-2 border-b break-words focus:outline-none focus:ring focus:ring-blue-300">${test.testCaseId || ''}</td>
+              <td contenteditable="true" class="px-4 py-2 border-b break-words focus:outline-none focus:ring focus:ring-blue-300">${test.title || ''}</td>
+              <td contenteditable="true" class="px-4 py-2 border-b break-words focus:outline-none focus:ring focus:ring-blue-300">${stepsAsList}</td>
+              <td contenteditable="true" class="px-4 py-2 border-b break-words focus:outline-none focus:ring focus:ring-blue-300">${test.expectedResult || ''}</td>
             `;
             tbody.appendChild(row);
+            setTimeout(() => row.classList.remove('newly-added'), 2000);
           });
-    
-          document.getElementById('outputSection').classList.remove('hidden');
+          // Back to Top button logic
+          const backToTopBtn = document.getElementById('backToTop');
+          window.addEventListener('scroll', () => {
+            if (window.scrollY > 300) {
+              backToTopBtn.classList.remove('hidden');
+            } else {
+              backToTopBtn.classList.add('hidden');
+            }
+          });
+          backToTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+          if (testCases.length > 0) {
+            document.getElementById('outputSection').classList.remove('hidden');
+            document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
+            generateBtn.disabled = false;
+            generateBtn.innerText = originalText;
+          }
           spinner.classList.add('hidden');
-          generateToast.classList.remove('hidden');
-          setTimeout(() => generateToast.classList.add('hidden'), 3000);
-    
+          generateToast.classList.add('visible');
+          setTimeout(() => generateToast.classList.remove('visible'), 3000);
+
         } catch (error) {
           alert('Error generating test cases.');
           spinner.classList.add('hidden');
+          generateBtn.disabled = false;
+          generateBtn.innerText = originalText;
         }
       });
     });
@@ -260,6 +330,29 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
 <script>
+
+  window.addEventListener('message', async (e) => {
+  if (e.data === 'ado-auth-success') {
+    alert('✅ Logged in to Azure DevOps! Now fetching stories...');
+
+    const org = prompt('Enter your ADO Organization');
+    const project = prompt('Enter your ADO Project Name');
+
+    const response = await fetch(`/secure-ado-stories?organization=${org}&project=${project}`);
+    const data = await response.json();
+
+    console.log('Fetched Stories:', data.stories);
+    // You can now display the stories in UI like before
+  }
+});
+
+// Handle messages from the popup window
+window.addEventListener('message', (e) => {
+  if (e.data === 'ado-auth-success') {
+    alert('✅ Logged in to Azure DevOps!');
+  }
+});
+
 document.addEventListener('DOMContentLoaded', function () {
   const downloadCsvBtn = document.getElementById('downloadCsvBtn');
   const downloadExcelBtn = document.getElementById('downloadExcelBtn');
@@ -295,5 +388,79 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const fetchStoriesBtn = document.getElementById('fetchStoriesBtn');
+  if (fetchStoriesBtn) {
+    fetchStoriesBtn.addEventListener('click', async () => {
+      const org = document.getElementById('adoOrg').value.trim();
+      const project = document.getElementById('adoProject').value.trim();
+
+      if (!org || !project) {
+        alert('Please enter both organization and project name.');
+        return;
+      }
+
+      try {
+        const response = await fetch('/fetch-ado-stories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organization: org, project })
+        });
+
+        const data = await response.json();
+        const list = document.getElementById('storyList');
+        list.innerHTML = '';
+
+        if (data.stories && data.stories.length > 0) {
+          data.stories.forEach(story => {
+            const li = document.createElement('li');
+            li.className = 'bg-white p-4 rounded shadow';
+            li.innerHTML = `<strong>${story.title}</strong><br>${story.description || 'No description'}`;
+            list.appendChild(li);
+          });
+        } else {
+          list.innerHTML = '<li class="text-red-500">No stories found.</li>';
+        }
+      } catch (err) {
+        alert('❌ Error fetching stories: ' + err.message);
+        console.error(err);
+      }
+    });
+  }
+});
+</script>
 </body>
+  <!-- ADO Sidebar Drawer -->
+  <div id="adoDrawer" class="fixed top-0 right-0 h-full w-96 bg-white shadow-lg transform translate-x-full transition-transform duration-300 z-50 overflow-y-auto">
+    <div class="p-6 flex justify-between items-center border-b">
+      <h2 class="text-xl font-bold">Azure DevOps</h2>
+      <button onclick="toggleAdoDrawer()" class="text-gray-500 hover:text-red-600 text-2xl">&times;</button>
+    </div>
+    <div class="p-6 space-y-4">
+      <button onclick="window.open('/auth/login', 'Login to ADO', 'width=600,height=600')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-center font-semibold">
+        🔐 Login with Azure DevOps
+      </button>
+      <div class="bg-gray-50 p-4 rounded-lg shadow">
+        <p class="font-semibold mb-2">Or enter project details:</p>
+        <input type="text" id="adoOrg" placeholder="Organization (e.g. contoso)" class="mb-3 w-full p-2 border rounded focus:outline-none focus:ring focus:ring-blue-300">
+        <input type="text" id="adoProject" placeholder="Project (e.g. QATeam)" class="mb-3 w-full p-2 border rounded focus:outline-none focus:ring focus:ring-blue-300">
+        <button id="fetchStoriesBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition">📥 Fetch Stories</button>
+      </div>
+      <ul id="storyList" class="space-y-2 text-sm text-gray-700"></ul>
+    </div>
+  </div>
+
+  <!-- Drawer Toggle Button
+  <button onclick="toggleAdoDrawer()" class="fixed top-1/2 right-0 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-l z-40 transform -translate-y-1/2">
+    ADO
+  </button> -->
+
+  <script>
+    function toggleAdoDrawer() {
+      const drawer = document.getElementById('adoDrawer');
+      drawer.classList.toggle('translate-x-full');
+    }
+  </script>
+<button id="backToTop" class="fixed bottom-8 right-6 hidden bg-blue-600 text-white px-3 py-2 rounded-full shadow hover:bg-blue-700 z-50">↑</button>
 </html>

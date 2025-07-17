@@ -4,6 +4,8 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const path = require('path');
 const fetch = require('node-fetch');  // For DeepSeek API requests
+const session = require('express-session');
+const msal = require('@azure/msal-node');
 
 dotenv.config();
 console.log('OPENAI API KEY:', process.env.OPENAI_API_KEY ? '✅ Loaded' : '❌ Not Loaded');
@@ -20,6 +22,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Parse JSON
 app.use(express.json());
+
+app.use(session({
+  secret: 'your-secret-key', // Replace with env secret in production
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false } // Set to true if using HTTPS
+}));
 
 // OpenAI setup
 const openai = new OpenAI({
@@ -41,6 +50,7 @@ const fetchOpenAI = async (userStory, caseType) => {
       - Pre-conditions (if applicable; else write "None")
       - Steps to Execute (clear, numbered steps)
       - Expected Result (precise and testable)
+      - Priority (High, Medium, Low)
 
     Important Rules:
     - Focus ONLY on the information provided. Do not make assumptions beyond the input.
@@ -77,25 +87,25 @@ const fetchOpenAI = async (userStory, caseType) => {
 // Parse the response from Cohere into structured test case objects
 const parseTestCases = (testCaseText) => {
     const testCases = [];
-  
+
     // Split the entire text by newlines and filter for rows containing '|'
     const lines = testCaseText.split('\n').filter(line => line.includes('|'));
-  
+
     console.log("Parsed Lines:", lines); // Log the lines for debugging
-  
+
     // Process each line
     lines.forEach((line) => {
       // Split each line by '|' and trim extra spaces
       const fields = line.split('|').map(field => field.trim()).filter(Boolean);
-  
+
       console.log("Fields in line:", fields); // Log fields for debugging
-  
+
       // Ensure the first column contains 'TC-', meaning it's a valid test case
       if (fields.length >= 1 && fields[0].startsWith('TC-')) {
-        // Ensure there are exactly 5 fields (ID, Title, Pre-Conditions, Steps, Expected Result)
+        // Ensure there are exactly 6 fields (ID, Title, Type, Pre-Conditions, Steps, Expected Result)
         if (fields.length === 5) {
           const [testCaseId, title, preConditions, steps, expectedResult] = fields;
-  
+
           // Add the structured test case to the array
           testCases.push({
             testCaseId,
@@ -105,11 +115,11 @@ const parseTestCases = (testCaseText) => {
             expectedResult
           });
         } else {
-          console.log("Skipping invalid row due to incorrect number of fields:", fields);  // Log rows that don't have 5 fields
+          console.log("Skipping invalid row due to incorrect number of fields:", fields);  // Log rows that don't have 6 fields
         }
       }
     });
-  
+
     console.log("Final Test Cases:", testCases); // Log the final test cases array
     return testCases;
   };
@@ -149,29 +159,32 @@ const fetchDeepSeek = async (userStory, caseType) => {
 const fetchCohere = async (userStory, caseType) => {
     const apiKey = process.env.COHERE_API_KEY;  // Ensure this key is set in your .env
     const prompt = `
-      You are a Senior QA Engineer with 10+ years of experience in writing manual test cases for web and mobile applications.
-  
-      Your task is to generate detailed manual test cases based on the given User Story, Requirement, or API Description.
-  
-      Instructions:
-      - Start Test Case IDs from TC-001 and increment sequentially.
-      - For each Test Case, provide:
-        - Test Case ID
-        - Title (short and meaningful)
-        - Pre-conditions (if applicable; else write "None")
-        - Steps to Execute (clear, numbered steps)
-        - Expected Result (precise and testable)
-  
-      Important Rules:
-      - Focus ONLY on the information provided. Do not make assumptions beyond the input.
-      - For 'Negative' type, create invalid input or error-handling scenarios.
-      - For 'Boundary' type, focus on edge value cases (like limits, thresholds).
-      - Keep the language professional and concise.
-      - Limit each Test Case Title to under 10 words.
-  
-      Output Format:
-      Return the result in simple plain text, using "|" (pipe symbol) to separate columns like a CSV table.
-    `;
+You are a Senior QA Engineer with 10+ years of experience in writing manual test cases for web and mobile applications.
+
+Your task is to generate detailed manual test cases based on the given User Story, Requirement, or API Description.
+
+Instructions:
+- Start Test Case IDs from TC-001 and increment sequentially.
+- For each Test Case, provide:
+  - Test Case ID
+  - Title (short and meaningful)
+  - Pre-conditions (if applicable; else write "None")
+  - Steps to Execute (clear, numbered steps)
+  - Expected Result (precise and testable)
+
+Important Rules:
+- Focus ONLY on the information provided. Do not make assumptions beyond the input.
+- For 'Negative' type, create invalid input or error-handling scenarios.
+- For 'Boundary' type, focus on edge value cases (like limits, thresholds).
+- Keep the language professional and concise.
+- Limit each Test Case Title to under 10 words.
+
+Output Format:
+Return the result in plain text with 5 fields separated by "|" symbol:
+Test Case ID | Title | Pre-Conditions | Steps | Expected Result
+
+One test case per line, no markdown, no extra explanation.
+`;
     
     const bodyData = {
       model: "command-a-03-2025",
@@ -203,18 +216,18 @@ const fetchCohere = async (userStory, caseType) => {
   
       // Log the full API response for debugging
       console.log('Cohere Response:', data);
-  
-      const testCaseText = data.message.content[0].text;
-  
+      // Log the raw content from Cohere before parsing
+      console.log('Raw content from Cohere:', JSON.stringify(data.message.content, null, 2));
+
+      const testCaseText = data.message.content.map(part => part.text || '').join('\n');
+
       if (!testCaseText) {
         console.log('No test case text received from Cohere');
         throw new Error('No text in the first item of content array');
       }
-  
+
       // Parse the received text and return structured data
-    //   console.log(testCaseText);
       const testCases = parseTestCases(testCaseText);
-    //   console.log("testCases:",testCases);
       return testCases; // Send structured data to frontend
   
     } catch (error) {
@@ -253,6 +266,151 @@ app.post('/generate-test-cases', async (req, res) => {
       }
     }
   });
+
+// Fetch user stories using OAuth token
+app.get('/secure-ado-stories', async (req, res) => {
+  const token = req.session.accessToken;
+  const organization = req.query.organization;
+  const project = req.query.project;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Not authenticated. Please login via /auth/login' });
+  }
+
+  try {
+    const wiqlResponse = await fetch(`https://dev.azure.com/${organization}/${project}/_apis/wit/wiql?api-version=7.1`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query: `
+          SELECT [System.Id], [System.Title], [System.Description]
+          FROM WorkItems
+          WHERE [System.WorkItemType] = 'User Story'
+          ORDER BY [System.ChangedDate] DESC
+        `
+      })
+    });
+
+    const wiqlData = await wiqlResponse.json();
+    const ids = wiqlData.workItems.map(item => item.id).slice(0, 10);
+
+    if (!ids.length) return res.json({ stories: [] });
+
+    const detailsResponse = await fetch(`https://dev.azure.com/${organization}/${project}/_apis/wit/workitems?ids=${ids.join(',')}&$expand=all&api-version=7.1`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    const detailsData = await detailsResponse.json();
+    const stories = detailsData.value.map(item => ({
+      id: item.id,
+      title: item.fields['System.Title'],
+      description: item.fields['System.Description'] || 'No description'
+    }));
+
+    res.json({ stories });
+  } catch (err) {
+    console.error('OAuth ADO Fetch Error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch user stories via OAuth', error: err.message });
+  }
+});
+  // Fetch user stories from Azure DevOps
+app.post('/fetch-ado-stories', async (req, res) => {
+  const { organization, project } = req.body;
+
+  try {
+    const auth = Buffer.from(`:${process.env.ADO_PAT}`).toString('base64');
+
+    // 1. WIQL query to get story IDs
+    const wiqlResponse = await fetch(`https://dev.azure.com/${organization}/${project}/_apis/wit/wiql?api-version=7.1`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query: `
+          SELECT [System.Id], [System.Title], [System.Description]
+          FROM WorkItems
+          WHERE [System.WorkItemType] = 'User Story'
+          ORDER BY [System.ChangedDate] DESC
+        `
+      })
+    });
+
+    const wiqlData = await wiqlResponse.json();
+    const ids = wiqlData.workItems.map(item => item.id).slice(0, 10); // limit to 10
+
+    if (ids.length === 0) return res.json({ stories: [] });
+
+    // 2. Get full details
+    const detailsResponse = await fetch(`https://dev.azure.com/${organization}/${project}/_apis/wit/workitems?ids=${ids.join(',')}&$expand=all&api-version=7.1`, {
+      headers: { 'Authorization': `Basic ${auth}` }
+    });
+
+    const detailsData = await detailsResponse.json();
+    const stories = detailsData.value.map(item => ({
+      id: item.id,
+      title: item.fields['System.Title'],
+      description: item.fields['System.Description'] || 'No description'
+    }));
+
+    res.json({ stories });
+  } catch (error) {
+    console.error('ADO Fetch Error:', error.message);
+    res.status(500).json({ message: 'Failed to fetch user stories', error: error.message });
+  }
+});
+
+const msalConfig = {
+  auth: {
+    clientId: process.env.AZ_CLIENT_ID,
+    authority: 'https://login.microsoftonline.com/common',
+    clientSecret: process.env.AZ_CLIENT_SECRET,
+  }
+};
+
+const cca = new msal.ConfidentialClientApplication(msalConfig);
+
+// OAuth login endpoint
+app.get('/auth/login', async (req, res) => {
+  try {
+    const authUrl = await cca.getAuthCodeUrl({
+      scopes: ['499b84ac-1321-427f-aa17-267ca6975798/.default'],
+      redirectUri: process.env.PROD_REDIRECT_URI
+    });
+    res.redirect(authUrl);
+  } catch (err) {
+    console.error('Auth URL error:', err.message);
+    res.status(500).send('Failed to initiate login');
+  }
+});
+
+// OAuth redirect callback
+app.get('/auth/callback', async (req, res) => {
+  const code = req.query.code;
+  try {
+    const tokenResponse = await cca.acquireTokenByCode({
+      code,
+      scopes: ['499b84ac-1321-427f-aa17-267ca6975798/.default'],
+      redirectUri: process.env.PROD_REDIRECT_URI
+    });
+
+    req.session.accessToken = tokenResponse.accessToken;
+
+    res.send(`
+      <script>
+        window.opener.postMessage('ado-auth-success', '*');
+        window.close();
+      </script>
+    `);
+  } catch (err) {
+    console.error('Token error:', err.message);
+    res.status(500).send('Token exchange failed');
+  }
+});
 
 // Serve index.html
 app.get('/', (req, res) => {
